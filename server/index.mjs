@@ -37,7 +37,8 @@ const server = http.createServer(async (request, response) => {
     if (pathname === "/api/catalog") {
       const rows = queryAll(`
         SELECT t.id,t.type,t.title,t.original_title,t.year,t.overview,t.poster_path,t.backdrop_path,
-               COUNT(m.id) AS file_count
+               COUNT(m.id) AS file_count,
+               (SELECT mf.id FROM media_files mf WHERE mf.title_id=t.id AND mf.available=1 ORDER BY mf.season_id IS NOT NULL, mf.season_id, mf.episode_number, mf.id LIMIT 1) AS media_file_id
         FROM titles t LEFT JOIN media_files m ON m.title_id=t.id AND m.available=1
         GROUP BY t.id ORDER BY t.updated_at DESC,t.title COLLATE NOCASE
       `);
@@ -63,6 +64,16 @@ const server = http.createServer(async (request, response) => {
     const mediaMatch = pathname.match(/^\/api\/media\/(\d+)$/);
     if (mediaMatch && request.method === "GET") {
       return streamMedia(request, response, Number(mediaMatch[1]));
+    }
+
+    if (pathname === "/api/progress" && request.method === "GET") {
+      const profileId = Number(url.searchParams.get("profileId") || 1);
+      const mediaFileId = Number(url.searchParams.get("mediaFileId") || 0);
+      if (!mediaFileId) return json(response, 400, { error: "mediaFileId é obrigatório" });
+      return json(response, 200, queryOne(
+        "SELECT position_seconds,duration_seconds,completed,updated_at FROM progress WHERE profile_id=? AND media_file_id=?",
+        [profileId, mediaFileId],
+      ) || { position_seconds: 0, duration_seconds: null, completed: 0, updated_at: null });
     }
 
     if (pathname === "/api/progress" && request.method === "POST") {
