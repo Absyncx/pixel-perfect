@@ -4,8 +4,8 @@ import {
   Bookmark, CircleUserRound, Play, Search, Settings, ServerOff, RefreshCw, Film, Tv, X
 } from "lucide-react";
 import {
-  addToMyList, checkCineCasaServer, getCatalog, getMediaUrl, getProgress, getMyList, getProfiles, removeFromMyList, saveProgress,
-  type CatalogTitle, type CineCasaProfile
+  addToMyList, checkCineCasaServer, getCatalog, getMediaUrl, getProgress, getMyList, getProfiles, getSeriesEpisodes, removeFromMyList, saveProgress,
+  type CatalogTitle, type CineCasaProfile, type SeriesEpisode
 } from "../lib/cinecasa-api";
 
 export const Route = createFileRoute("/")({ component: CineCasaHome });
@@ -17,6 +17,7 @@ function CineCasaHome() {
   const [profiles, setProfiles] = useState<CineCasaProfile[]>([]);
   const [profileId, setProfileId] = useState<number | null>(null);
   const [playing, setPlaying] = useState<CatalogTitle | null>(null);
+  const [seriesPicker, setSeriesPicker] = useState<{ title: CatalogTitle; episodes: SeriesEpisode[] } | null>(null);
   const [myList, setMyList] = useState<CatalogTitle[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -61,6 +62,20 @@ function CineCasaHome() {
     ? titles.filter((title) => [title.title, title.original_title, title.year?.toString()].filter(Boolean).some((value) => String(value).toLocaleLowerCase("pt-BR").includes(normalizedSearch)))
     : [];
   const myListIds = new Set(myList.map((item) => item.id));
+
+  async function handlePlay(item: CatalogTitle) {
+    if (!item.media_file_id) return;
+    if (item.type === "series") {
+      try {
+        const episodes = await getSeriesEpisodes(item.id);
+        setSeriesPicker({ title: item, episodes });
+      } catch {
+        setSeriesPicker({ title: item, episodes: [] });
+      }
+      return;
+    }
+    setPlaying(item);
+  }
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-[#070707] text-white">
@@ -109,7 +124,7 @@ function CineCasaHome() {
               <p className="mt-5 max-w-xl text-sm leading-6 text-white/60 md:text-base">{titles.length} título{titles.length === 1 ? "" : "s"} encontrado{titles.length === 1 ? "" : "s"} no seu servidor local.</p>
             </div>
           </section>
-          <CatalogRow id="filmes" title="Filmes" items={movies} icon={<Film className="h-5 w-5" />} onPlay={setPlaying} myListIds={myListIds} onToggleList={async (id) => {
+          <CatalogRow id="filmes" title="Filmes" items={movies} icon={<Film className="h-5 w-5" />} onPlay={handlePlay} myListIds={myListIds} onToggleList={async (id) => {
             if (!profileId) return;
             if (myListIds.has(id)) {
               await removeFromMyList(profileId, id);
@@ -139,8 +154,13 @@ function CineCasaHome() {
         </>
       )}
 
+      {seriesPicker && <EpisodePicker title={seriesPicker.title} episodes={seriesPicker.episodes} onClose={() => setSeriesPicker(null)} onPlay={(mediaFileId) => {
+        setPlaying({ ...seriesPicker.title, media_file_id: mediaFileId });
+        setSeriesPicker(null);
+        setSearchOpen(false);
+      }} />}
       {playing && profileId && <Player profileId={profileId} title={playing} onClose={() => setPlaying(null)} />}
-      {searchOpen && <SearchOverlay value={search} onChange={setSearch} results={searchResults} onPlay={(item) => { setPlaying(item); setSearchOpen(false); }} onClose={() => { setSearchOpen(false); setSearch(""); }} />}
+      {searchOpen && <SearchOverlay value={search} onChange={setSearch} results={searchResults} onPlay={handlePlay} onClose={() => { setSearchOpen(false); setSearch(""); }} />}
       {settingsOpen && <SettingsOverlay onClose={() => setSettingsOpen(false)} />}
       {connected && profiles.length > 0 && !activeProfile && (
         <ProfilePicker profiles={profiles} onSelect={(id) => {
@@ -203,6 +223,34 @@ function ProfilePicker({ profiles, onSelect }: { profiles: CineCasaProfile[]; on
               <p className="mt-4 font-semibold text-white/85 group-hover:text-white">{profile.name}</p>
             </button>
           ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EpisodePicker({ title, episodes, onClose, onPlay }: { title: CatalogTitle; episodes: SeriesEpisode[]; onClose: () => void; onPlay: (mediaFileId: number) => void }) {
+  return (
+    <div className="fixed inset-0 z-[65] grid place-items-center bg-black/90 px-6 py-8 backdrop-blur-md">
+      <div className="max-h-[80vh] w-full max-w-2xl overflow-hidden rounded-2xl border border-white/10 bg-[#121212] shadow-2xl">
+        <div className="flex items-center justify-between border-b border-white/10 px-6 py-5">
+          <div><p className="text-xs font-semibold uppercase tracking-[0.25em] text-[#e50914]">Série</p><h2 className="mt-1 text-2xl font-black">{title.title}</h2></div>
+          <button onClick={onClose} aria-label="Fechar seleção de episódios" className="rounded-full p-2 text-white/60 hover:bg-white/10"><X className="h-5 w-5" /></button>
+        </div>
+        <div className="max-h-[calc(80vh-90px)] overflow-y-auto p-4">
+          {episodes.length === 0 ? (
+            <p className="p-4 text-sm text-white/40">Nenhum episódio disponível para reprodução.</p>
+          ) : (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {episodes.map((episode) => (
+                <button key={episode.media_file_id} onClick={() => onPlay(episode.media_file_id)} className="flex items-center gap-4 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-left transition hover:border-white/20 hover:bg-white/[0.08]">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-white/10 text-sm font-bold">{String(episode.episode_number).padStart(2, "0")}</span>
+                  <span><span className="block text-sm font-semibold">Temporada {episode.season_number}</span><span className="text-xs text-white/40">Episódio {episode.episode_number}</span></span>
+                  <Play className="ml-auto h-4 w-4 shrink-0" />
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
