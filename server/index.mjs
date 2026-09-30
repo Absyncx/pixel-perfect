@@ -67,6 +67,25 @@ const server = http.createServer(async (request, response) => {
       return json(response, 200, queryAll("SELECT key,value FROM settings ORDER BY key"));
     }
 
+    const seriesEpisodesMatch = pathname.match(/^\/api\/series\/(\\d+)\/episodes$/);
+    if (seriesEpisodesMatch && request.method === "GET") {
+      const titleId = Number(seriesEpisodesMatch[1]);
+      if (!Number.isInteger(titleId) || titleId <= 0) {
+        return json(response, 400, { error: "titleId deve ser um inteiro positivo" });
+      }
+      if (!queryOne("SELECT id FROM titles WHERE id=? AND type='series'", [titleId])) {
+        return json(response, 404, { error: "Série não encontrada" });
+      }
+      return json(response, 200, queryAll(
+        `SELECT s.season_number,m.episode_number,m.id AS media_file_id
+         FROM media_files m
+         JOIN seasons s ON s.id=m.season_id
+         WHERE m.title_id=? AND m.kind='episode' AND m.available=1
+         ORDER BY s.season_number,m.episode_number,m.id`,
+        [titleId],
+      ));
+    }
+
     if (pathname === "/api/my-list" && request.method === "GET") {
       const profileId = Number(url.searchParams.get("profileId") || 0);
       if (!Number.isInteger(profileId) || profileId <= 0) {
