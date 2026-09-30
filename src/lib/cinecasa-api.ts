@@ -23,10 +23,12 @@ export type CatalogTitle = {
   media_file_id: number | null;
 };
 
-const DEFAULT_BASE_URL = "";
+const DEFAULT_BASE_URL = (import.meta.env.VITE_CINECASA_SERVER_URL || "").trim().replace(/\/$/, "");
 
 export function getCineCasaBaseUrl() {
-  return localStorage.getItem("cinecasa.serverUrl") || DEFAULT_BASE_URL;
+  if (typeof window === "undefined") return DEFAULT_BASE_URL;
+  const stored = localStorage.getItem("cinecasa.serverUrl")?.trim();
+  return (stored || DEFAULT_BASE_URL).replace(/\/$/, "");
 }
 
 export async function cineCasaFetch<T>(path: string, init?: RequestInit): Promise<T> {
