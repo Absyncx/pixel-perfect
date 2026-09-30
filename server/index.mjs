@@ -67,7 +67,7 @@ const server = http.createServer(async (request, response) => {
       return json(response, 200, queryAll("SELECT key,value FROM settings ORDER BY key"));
     }
 
-    const seriesEpisodesMatch = pathname.match(/^\/api\/series\/(\\d+)\/episodes$/);
+    const seriesEpisodesMatch = pathname.match(/^\/api\/series\/(\d+)\/episodes$/);
     if (seriesEpisodesMatch && request.method === "GET") {
       const titleId = Number(seriesEpisodesMatch[1]);
       if (!Number.isInteger(titleId) || titleId <= 0) {
