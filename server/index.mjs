@@ -1,5 +1,4 @@
 import http from "node:http";
-import path from "node:path";
 import { execute, queryAll, queryOne } from "./db.mjs";
 import { getMediaRoots, isAuthorizedScanFolder, scanLibrary } from "./scanner.mjs";
 import { streamMedia } from "./media.mjs";
