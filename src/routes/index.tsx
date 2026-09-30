@@ -143,7 +143,28 @@ function CatalogRow({ id, title, items, icon, onPlay }: { id: string; title: str
   );
 }
 
-function ProfilePicker({ profiles, onSelect }: { profiles: CineCasaProfile[]; onSelect: (id: number) => void }) {\n  return (\n    <div className="fixed inset-0 z-[60] grid place-items-center bg-black/90 px-6 backdrop-blur-sm">\n      <div className="w-full max-w-2xl text-center">\n        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#e50914]">CineCasa</p>\n        <h1 className="mt-3 text-3xl font-black md:text-4xl">Quem está assistindo?</h1>\n        <div className="mt-10 grid grid-cols-2 gap-6 sm:grid-cols-3">\n          {profiles.map((profile) => (\n            <button key={profile.id} onClick={() => onSelect(profile.id)} className="group rounded-2xl p-4 transition hover:bg-white/10">\n              <div className="mx-auto grid aspect-square w-full max-w-36 place-items-center rounded-2xl bg-gradient-to-br from-red-500 to-red-950 text-4xl font-black shadow-2xl transition group-hover:scale-105">\n                {profile.avatar ? <img src={profile.avatar} alt="" className="h-full w-full rounded-2xl object-cover" /> : profile.name.charAt(0).toUpperCase()}\n              </div>\n              <p className="mt-4 font-semibold text-white/85 group-hover:text-white">{profile.name}</p>\n            </button>\n          ))}\n        </div>\n      </div>\n    </div>\n  );\n}\n\nfunction Player({ profileId, title, onClose }: { profileId: number; title: CatalogTitle; onClose: () => void }) {
+function ProfilePicker({ profiles, onSelect }: { profiles: CineCasaProfile[]; onSelect: (id: number) => void }) {
+  return (
+    <div className="fixed inset-0 z-[60] grid place-items-center bg-black/90 px-6 backdrop-blur-sm">
+      <div className="w-full max-w-2xl text-center">
+        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#e50914]">CineCasa</p>
+        <h1 className="mt-3 text-3xl font-black md:text-4xl">Quem está assistindo?</h1>
+        <div className="mt-10 grid grid-cols-2 gap-6 sm:grid-cols-3">
+          {profiles.map((profile) => (
+            <button key={profile.id} onClick={() => onSelect(profile.id)} className="group rounded-2xl p-4 transition hover:bg-white/10">
+              <div className="mx-auto grid aspect-square w-full max-w-36 place-items-center rounded-2xl bg-gradient-to-br from-red-500 to-red-950 text-4xl font-black shadow-2xl transition group-hover:scale-105">
+                {profile.avatar ? <img src={profile.avatar} alt="" className="h-full w-full rounded-2xl object-cover" /> : profile.name.charAt(0).toUpperCase()}
+              </div>
+              <p className="mt-4 font-semibold text-white/85 group-hover:text-white">{profile.name}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Player({ profileId, title, onClose }: { profileId: number; title: CatalogTitle; onClose: () => void }) {
   const [position, setPosition] = useState(0);
   const [duration, setDuration] = useState<number | null>(null);
   const [resume, setResume] = useState(0);
