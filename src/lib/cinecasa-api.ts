@@ -47,6 +47,10 @@ export async function getCatalog() {
   return cineCasaFetch<CatalogTitle[]>("/api/catalog");
 }
 
+export async function getProfiles() {
+  return cineCasaFetch<CineCasaProfile[]>("/api/profiles");
+}
+
 export type CineCasaProgress = {
   position_seconds: number;
   duration_seconds: number | null;
