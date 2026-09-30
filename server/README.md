@@ -33,7 +33,7 @@ A URL configurada na interface fica no navegador e pode ser trocada sem recompil
 
 ## Segurança
 
-O streaming só permite arquivos abaixo de `CINECASA_MEDIA_ROOT`. Caminhos fora da raiz autorizada retornam 403. O endpoint de scan apenas registra arquivos identificados com segurança; nomes ambíguos devem ser tratados na fila de revisão antes de receber metadados.
+O streaming só permite arquivos abaixo de `CINECASA_MEDIA_ROOTS` (ou `CINECASA_MEDIA_ROOT` para compatibilidade). Caminhos fora das raízes autorizadas retornam 403. O endpoint de scan apenas registra arquivos identificados com segurança; nomes ambíguos devem ser tratados na fila de revisão antes de receber metadados.
 
 ## Endpoints iniciais
 
@@ -44,5 +44,8 @@ O streaming só permite arquivos abaixo de `CINECASA_MEDIA_ROOT`. Caminhos fora 
 - `POST /api/scan`
 - `GET /api/media/:id` com HTTP Range
 - `POST /api/progress`
+- `GET /api/my-list`
+- `POST /api/my-list`
+- `DELETE /api/my-list`
 
-A integração do frontend com esses endpoints será feita em seguida.
+A interface já usa os endpoints de catálogo, perfis, minha lista, progresso e streaming.
