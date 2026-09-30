@@ -10,6 +10,8 @@ fs.mkdirSync(DATA_DIR, { recursive: true });
 
 export const db = new DatabaseSync(DB_PATH);
 db.exec(fs.readFileSync(SCHEMA_PATH, "utf8"));
+db.exec("INSERT OR IGNORE INTO profiles (id,name,avatar) VALUES (1,'Breno',NULL)");
+db.exec("INSERT OR IGNORE INTO profiles (id,name,avatar) VALUES (2,'Esposa',NULL)");
 
 export function queryAll(sql, params = []) {
   return db.prepare(sql).all(...params);
