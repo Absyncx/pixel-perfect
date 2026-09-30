@@ -68,6 +68,52 @@ const server = http.createServer(async (request, response) => {
       return json(response, 200, queryAll("SELECT key,value FROM settings ORDER BY key"));
     }
 
+    if (pathname === "/api/my-list" && request.method === "GET") {
+      const profileId = Number(url.searchParams.get("profileId") || 0);
+      if (!Number.isInteger(profileId) || profileId <= 0) {
+        return json(response, 400, { error: "profileId deve ser um inteiro positivo" });
+      }
+      return json(response, 200, queryAll(`
+        SELECT t.id,t.type,t.title,t.original_title,t.year,t.overview,t.poster_path,t.backdrop_path,
+               COUNT(m.id) AS file_count,
+               (SELECT mf.id FROM media_files mf WHERE mf.title_id=t.id AND mf.available=1
+                ORDER BY mf.season_id IS NOT NULL, mf.season_id, mf.episode_number, mf.id LIMIT 1) AS media_file_id
+        FROM my_list ml
+        JOIN titles t ON t.id=ml.title_id
+        LEFT JOIN media_files m ON m.title_id=t.id AND m.available=1
+        WHERE ml.profile_id=?
+        GROUP BY t.id
+        ORDER BY ml.created_at DESC
+      `, [profileId]));
+    }
+
+    if (pathname === "/api/my-list" && request.method === "POST") {
+      const payload = await body(request);
+      const profileId = Number(payload.profileId);
+      const titleId = Number(payload.titleId);
+      if (!Number.isInteger(profileId) || profileId <= 0 || !Number.isInteger(titleId) || titleId <= 0) {
+        return json(response, 400, { error: "profileId e titleId devem ser inteiros positivos" });
+      }
+      if (!queryOne("SELECT id FROM profiles WHERE id=?", [profileId])) {
+        return json(response, 404, { error: "Perfil não encontrado" });
+      }
+      if (!queryOne("SELECT id FROM titles WHERE id=?", [titleId])) {
+        return json(response, 404, { error: "Título não encontrado" });
+      }
+      execute("INSERT OR IGNORE INTO my_list(profile_id,title_id) VALUES (?,?)", [profileId, titleId]);
+      return json(response, 200, { ok: true });
+    }
+
+    if (pathname === "/api/my-list" && request.method === "DELETE") {
+      const profileId = Number(url.searchParams.get("profileId") || 0);
+      const titleId = Number(url.searchParams.get("titleId") || 0);
+      if (!Number.isInteger(profileId) || profileId <= 0 || !Number.isInteger(titleId) || titleId <= 0) {
+        return json(response, 400, { error: "profileId e titleId devem ser inteiros positivos" });
+      }
+      execute("DELETE FROM my_list WHERE profile_id=? AND title_id=?", [profileId, titleId]);
+      return json(response, 200, { ok: true });
+    }
+
     if (pathname === "/api/scan" && request.method === "POST") {
       const payload = await body(request);
       const folders = Array.isArray(payload.folders)
