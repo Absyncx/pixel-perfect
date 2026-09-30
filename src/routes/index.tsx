@@ -33,7 +33,7 @@ function CineCasaHome() {
 
   useEffect(() => { void loadCatalog(); }, []);
 
-  const movies = titles.filter((title) => title.type === "movie");
+  const activeProfile = profiles.find((profile) => profile.id === profileId) ?? null;\n  const movies = titles.filter((title) => title.type === "movie");
   const series = titles.filter((title) => title.type === "series");
 
   return (
@@ -51,7 +51,7 @@ function CineCasaHome() {
         <div className="flex items-center gap-2">
           <button aria-label="Pesquisar" className="rounded-full p-2 text-white/70 hover:bg-white/10 hover:text-white"><Search className="h-5 w-5" /></button>
           <button aria-label="Configurações" className="rounded-full p-2 text-white/70 hover:bg-white/10 hover:text-white"><Settings className="h-5 w-5" /></button>
-          <button aria-label="Perfil" className="ml-1 grid h-9 w-9 place-items-center rounded-full bg-gradient-to-br from-red-500 to-red-900"><CircleUserRound className="h-5 w-5" /></button>
+          <button\n            aria-label={activeProfile ? `Perfil ${activeProfile.name}` : "Selecionar perfil"}\n            onClick={() => setProfileId(null)}\n            className="ml-1 grid h-9 w-9 place-items-center rounded-full bg-gradient-to-br from-red-500 to-red-900"\n          ><CircleUserRound className="h-5 w-5" /></button>
         </div>
       </header>
 
@@ -124,7 +124,7 @@ function CatalogRow({ id, title, items, icon, onPlay }: { id: string; title: str
   );
 }
 
-function Player({ title, onClose }: { title: CatalogTitle; onClose: () => void }) {
+function ProfilePicker({ profiles, onSelect }: { profiles: CineCasaProfile[]; onSelect: (id: number) => void }) {\n  return (\n    <div className="fixed inset-0 z-[60] grid place-items-center bg-black/90 px-6 backdrop-blur-sm">\n      <div className="w-full max-w-2xl text-center">\n        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#e50914]">CineCasa</p>\n        <h1 className="mt-3 text-3xl font-black md:text-4xl">Quem está assistindo?</h1>\n        <div className="mt-10 grid grid-cols-2 gap-6 sm:grid-cols-3">\n          {profiles.map((profile) => (\n            <button key={profile.id} onClick={() => onSelect(profile.id)} className="group rounded-2xl p-4 transition hover:bg-white/10">\n              <div className="mx-auto grid aspect-square w-full max-w-36 place-items-center rounded-2xl bg-gradient-to-br from-red-500 to-red-950 text-4xl font-black shadow-2xl transition group-hover:scale-105">\n                {profile.avatar ? <img src={profile.avatar} alt="" className="h-full w-full rounded-2xl object-cover" /> : profile.name.charAt(0).toUpperCase()}\n              </div>\n              <p className="mt-4 font-semibold text-white/85 group-hover:text-white">{profile.name}</p>\n            </button>\n          ))}\n        </div>\n      </div>\n    </div>\n  );\n}\n\nfunction Player({ profileId, title, onClose }: { profileId: number; title: CatalogTitle; onClose: () => void }) {
   const [position, setPosition] = useState(0);
   const [duration, setDuration] = useState<number | null>(null);
   const [resume, setResume] = useState(0);
@@ -132,7 +132,7 @@ function Player({ title, onClose }: { title: CatalogTitle; onClose: () => void }
   useEffect(() => {
     let active = true;
     if (!title.media_file_id) return;
-    void getProgress(1, title.media_file_id).then((progress) => {
+    void getProgress(profileId, title.media_file_id).then((progress) => {
       if (active) {
         setResume(progress.completed ? 0 : Math.max(0, progress.position_seconds || 0));
       }
@@ -164,7 +164,7 @@ function Player({ title, onClose }: { title: CatalogTitle; onClose: () => void }
             onTimeUpdate={(event) => setPosition(event.currentTarget.currentTime)}
             onPause={(event) => {
               const video = event.currentTarget;
-              void saveProgress(1, title.media_file_id!, video.currentTime, Number.isFinite(video.duration) ? video.duration : null, false).catch(() => undefined);
+              void saveProgress(profileId, title.media_file_id!, video.currentTime, Number.isFinite(video.duration) ? video.duration : null, false).catch(() => undefined);
             }}
             onEnded={(event) => {
               const video = event.currentTarget;
