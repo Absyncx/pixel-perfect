@@ -1,12 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {
-  CircleUserRound, Play, Search, Settings, ServerOff, RefreshCw, Film, Tv, X,
-  Pause, Volume2, Maximize, RotateCcw
+  CircleUserRound, Play, Search, Settings, ServerOff, RefreshCw, Film, Tv, X
 } from "lucide-react";
 import {
-  checkCineCasaServer, getCatalog, getMediaUrl, getProgress, saveProgress,
-  type CatalogTitle
+  checkCineCasaServer, getCatalog, getMediaUrl, getProgress, getProfiles, saveProgress,
+  type CatalogTitle, type CineCasaProfile
 } from "../lib/cinecasa-api";
 
 export const Route = createFileRoute("/")({ component: CineCasaHome });
@@ -15,25 +14,35 @@ function CineCasaHome() {
   const [connected, setConnected] = useState(false);
   const [loading, setLoading] = useState(true);
   const [titles, setTitles] = useState<CatalogTitle[]>([]);
+  const [profiles, setProfiles] = useState<CineCasaProfile[]>([]);
+  const [profileId, setProfileId] = useState<number | null>(null);
   const [playing, setPlaying] = useState<CatalogTitle | null>(null);
 
   async function loadCatalog() {
     setLoading(true);
     try {
       await checkCineCasaServer();
-      setTitles(await getCatalog());
+      const [catalog, availableProfiles] = await Promise.all([getCatalog(), getProfiles()]);
+      setTitles(catalog);
+      setProfiles(availableProfiles);
       setConnected(true);
     } catch {
       setConnected(false);
       setTitles([]);
+      setProfiles([]);
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => { void loadCatalog(); }, []);
+  useEffect(() => {
+    const stored = localStorage.getItem("cinecasa.profileId");
+    if (stored) setProfileId(Number(stored));
+    void loadCatalog();
+  }, []);
 
-  const activeProfile = profiles.find((profile) => profile.id === profileId) ?? null;\n  const movies = titles.filter((title) => title.type === "movie");
+  const activeProfile = profiles.find((profile) => profile.id === profileId) ?? null;
+  const movies = titles.filter((title) => title.type === "movie");
   const series = titles.filter((title) => title.type === "series");
 
   return (
@@ -51,7 +60,11 @@ function CineCasaHome() {
         <div className="flex items-center gap-2">
           <button aria-label="Pesquisar" className="rounded-full p-2 text-white/70 hover:bg-white/10 hover:text-white"><Search className="h-5 w-5" /></button>
           <button aria-label="Configurações" className="rounded-full p-2 text-white/70 hover:bg-white/10 hover:text-white"><Settings className="h-5 w-5" /></button>
-          <button\n            aria-label={activeProfile ? `Perfil ${activeProfile.name}` : "Selecionar perfil"}\n            onClick={() => setProfileId(null)}\n            className="ml-1 grid h-9 w-9 place-items-center rounded-full bg-gradient-to-br from-red-500 to-red-900"\n          ><CircleUserRound className="h-5 w-5" /></button>
+          <button
+            aria-label={activeProfile ? `Perfil ${activeProfile.name}` : "Selecionar perfil"}
+            onClick={() => setProfileId(null)}
+            className="ml-1 grid h-9 w-9 place-items-center rounded-full bg-gradient-to-br from-red-500 to-red-900"
+          ><CircleUserRound className="h-5 w-5" /></button>
         </div>
       </header>
 
@@ -84,7 +97,13 @@ function CineCasaHome() {
         </>
       )}
 
-      {playing && <Player title={playing} onClose={() => setPlaying(null)} />}
+      {playing && profileId && <Player profileId={profileId} title={playing} onClose={() => setPlaying(null)} />}
+      {connected && profiles.length > 0 && !activeProfile && (
+        <ProfilePicker profiles={profiles} onSelect={(id) => {
+          localStorage.setItem("cinecasa.profileId", String(id));
+          setProfileId(id);
+        }} />
+      )}
     </main>
   );
 }
@@ -168,7 +187,7 @@ function ProfilePicker({ profiles, onSelect }: { profiles: CineCasaProfile[]; on
             }}
             onEnded={(event) => {
               const video = event.currentTarget;
-              void saveProgress(1, title.media_file_id!, video.duration, Number.isFinite(video.duration) ? video.duration : null, true).catch(() => undefined);
+              void saveProgress(profileId, title.media_file_id!, video.duration, Number.isFinite(video.duration) ? video.duration : null, true).catch(() => undefined);
             }}
           />
           {resume > 5 && position < 1 && (
