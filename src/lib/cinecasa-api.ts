@@ -4,7 +4,7 @@ export type CineCasaHealth = {
   version: string;
 };
 
-export type CatalogTitle = {
+export type CineCasaProfile = {\n  id: number;\n  name: string;\n  avatar: string | null;\n};\n\nexport type CatalogTitle = {
   id: number;
   type: "movie" | "series";
   title: string;
