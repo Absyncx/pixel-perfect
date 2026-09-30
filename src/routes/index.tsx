@@ -114,7 +114,7 @@ function CineCasaHome() {
       ) : titles.length === 0 ? (
         <EmptyLibrary onRefresh={() => void loadCatalog()} loading={loading} />
       ) : (
-        <>
+        <div className="contents">
           <section className="relative min-h-[570px] overflow-hidden">
             <div className="absolute inset-0 bg-gradient-to-r from-[#070707] via-[#070707]/80 to-transparent" />
             <div className="absolute inset-0 bg-gradient-to-t from-[#070707] via-transparent to-[#070707]/20" />
@@ -151,7 +151,7 @@ function CineCasaHome() {
             await removeFromMyList(profileId, id);
             setMyList((items) => items.filter((item) => item.id !== id));
           }} />
-        </>
+        </div>
       )}
 
       {seriesPicker && <EpisodePicker title={seriesPicker.title} episodes={seriesPicker.episodes} onClose={() => setSeriesPicker(null)} onPlay={(mediaFileId) => {
