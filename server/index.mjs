@@ -8,14 +8,29 @@ const PORT = Number(process.env.CINECASA_PORT || 8420);
 const HOST = process.env.CINECASA_HOST || "0.0.0.0";
 
 function json(response, status, payload) {
-  response.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" });
+  response.writeHead(status, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET,POST,HEAD,OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Accept, Range",
+  });
+  if (status === 204) return response.end();
   response.end(JSON.stringify(payload));
 }
 
 function body(request) {
   return new Promise((resolve, reject) => {
     let raw = "";
-    request.on("data", chunk => raw += chunk);
+    let size = 0;
+    request.on("data", chunk => {
+      size += chunk.length;
+      if (size > 1024 * 1024) {
+        reject(new Error("Corpo da requisição excede 1 MB"));
+        request.destroy();
+        return;
+      }
+      raw += chunk;
+    });
     request.on("end", () => {
       try { resolve(raw ? JSON.parse(raw) : {}); } catch { reject(new Error("JSON inválido")); }
     });
@@ -55,8 +70,16 @@ const server = http.createServer(async (request, response) => {
 
     if (pathname === "/api/scan" && request.method === "POST") {
       const payload = await body(request);
-      const folders = Array.isArray(payload.folders) ? payload.folders.map(String) : [];
+      const folders = Array.isArray(payload.folders)
+        ? payload.folders.map((folder) => String(folder).trim()).filter(Boolean)
+        : [];
       if (!folders.length) return json(response, 400, { error: "Informe ao menos uma pasta" });
+
+      const adminToken = process.env.CINECASA_ADMIN_TOKEN;
+      if (adminToken && request.headers.authorization !== `Bearer ${adminToken}`) {
+        return json(response, 401, { error: "Autorização de administrador necessária" });
+      }
+
       const result = await scanLibrary(folders);
       return json(response, 200, result);
     }
@@ -78,13 +101,23 @@ const server = http.createServer(async (request, response) => {
 
     if (pathname === "/api/progress" && request.method === "POST") {
       const payload = await body(request);
-      if (!payload.profileId || !payload.mediaFileId) return json(response, 400, { error: "profileId e mediaFileId são obrigatórios" });
+      const profileId = Number(payload.profileId);
+      const mediaFileId = Number(payload.mediaFileId);
+      const positionSeconds = Number(payload.positionSeconds ?? 0);
+      const durationSeconds = payload.durationSeconds == null ? null : Number(payload.durationSeconds);
+
+      if (!Number.isInteger(profileId) || profileId <= 0 || !Number.isInteger(mediaFileId) || mediaFileId <= 0) {
+        return json(response, 400, { error: "profileId e mediaFileId devem ser inteiros positivos" });
+      }
+      if (!Number.isFinite(positionSeconds) || positionSeconds < 0 || (durationSeconds !== null && (!Number.isFinite(durationSeconds) || durationSeconds < 0))) {
+        return json(response, 400, { error: "Valores de progresso inválidos" });
+      }
       execute(
         `INSERT INTO progress(profile_id,media_file_id,position_seconds,duration_seconds,completed)
          VALUES (?,?,?,?,?)
          ON CONFLICT(profile_id,media_file_id) DO UPDATE SET position_seconds=excluded.position_seconds,
          duration_seconds=excluded.duration_seconds,completed=excluded.completed,updated_at=CURRENT_TIMESTAMP`,
-        [payload.profileId, payload.mediaFileId, Number(payload.positionSeconds || 0), payload.durationSeconds == null ? null : Number(payload.durationSeconds), payload.completed ? 1 : 0],
+        [profileId, mediaFileId, positionSeconds, durationSeconds, payload.completed ? 1 : 0],
       );
       return json(response, 204, {});
     }
