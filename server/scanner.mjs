@@ -1,9 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { execute, queryOne } from "./db.mjs";
+import { execute, queryAll, queryOne } from "./db.mjs";
 
 const VIDEO_EXTENSIONS = new Set([".mkv", ".mp4", ".m4v", ".avi", ".mov", ".webm", ".ts"]);
-const SUBTITLE_EXTENSIONS = new Set([".srt", ".vtt"]);
 
 function normalizeName(value) {
   return value
@@ -45,15 +44,21 @@ async function walk(dir, out = []) {
   return out;
 }
 
+function isInside(root, candidate) {
+  const resolvedRoot = path.resolve(root);
+  const resolvedCandidate = path.resolve(candidate);
+  return resolvedCandidate === resolvedRoot || resolvedCandidate.startsWith(resolvedRoot + path.sep);
+}
+
 export async function scanLibrary(folders) {
   const run = execute("INSERT INTO scan_runs (status) VALUES (?)", ["running"]);
   const runId = Number(run.lastInsertRowid);
-  let seen = 0, added = 0, updated = 0, review = 0;
+  let seen = 0, added = 0, updated = 0, review = 0, missing = 0;
   const scannedPaths = new Set();
+  const roots = folders.map((folder) => path.resolve(folder));
 
   try {
-    for (const folder of folders) {
-      const root = path.resolve(folder);
+    for (const root of roots) {
       let files = [];
       try { files = await walk(root); } catch { continue; }
 
@@ -62,13 +67,26 @@ export async function scanLibrary(folders) {
         if (!parsed) continue;
         seen++;
         scannedPaths.add(filePath);
-        const stat = await fs.stat(filePath);
+
+        let stat;
+        try {
+          stat = await fs.stat(filePath);
+        } catch {
+          continue;
+        }
+
         const existing = queryOne("SELECT id, size, mtime_ms FROM media_files WHERE path = ?", [filePath]);
 
         if (existing) {
+          execute(
+            "DELETE FROM scan_review WHERE path = ?",
+            [filePath],
+          );
           if (existing.size !== stat.size || existing.mtime_ms !== stat.mtimeMs) {
-            execute("UPDATE media_files SET size=?, mtime_ms=?, available=1, updated_at=CURRENT_TIMESTAMP WHERE id=?",
-              [stat.size, stat.mtimeMs, existing.id]);
+            execute(
+              "UPDATE media_files SET size=?, mtime_ms=?, available=1, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+              [stat.size, stat.mtimeMs, existing.id],
+            );
             updated++;
           } else {
             execute("UPDATE media_files SET available=1 WHERE id=?", [existing.id]);
@@ -77,15 +95,17 @@ export async function scanLibrary(folders) {
         }
 
         if (!parsed.title) {
-          execute("INSERT OR IGNORE INTO scan_review (path, reason) VALUES (?, ?)",
-            [filePath, "Nome não pôde ser identificado com segurança"]);
+          execute(
+            "INSERT OR IGNORE INTO scan_review (path, reason) VALUES (?, ?)",
+            [filePath, "Nome não pôde ser identificado com segurança"],
+          );
           review++;
           continue;
         }
 
         let titleId;
         if (parsed.type === "movie") {
-          let title = queryOne(
+          const title = queryOne(
             "SELECT id FROM titles WHERE type='movie' AND lower(title)=lower(?) AND (year=? OR (year IS NULL AND ? IS NULL))",
             [parsed.title, parsed.year, parsed.year],
           );
@@ -107,8 +127,10 @@ export async function scanLibrary(folders) {
           titleId = title.id;
           let season = queryOne("SELECT id FROM seasons WHERE title_id=? AND season_number=?", [titleId, parsed.season]);
           if (!season) {
-            const result = execute("INSERT INTO seasons (title_id,season_number,name) VALUES (?,?,?)",
-              [titleId, parsed.season, `Temporada ${parsed.season}`]);
+            const result = execute(
+              "INSERT INTO seasons (title_id,season_number,name) VALUES (?,?,?)",
+              [titleId, parsed.season, `Temporada ${parsed.season}`],
+            );
             season = { id: Number(result.lastInsertRowid) };
           }
           execute(
@@ -127,27 +149,45 @@ export async function scanLibrary(folders) {
       }
     }
 
-    for (const folder of folders) {
-      const root = path.resolve(folder);
-      const existing = await walk(root).catch(() => []);
-      for (const candidate of existing) {
-        if (!scannedPaths.has(candidate)) {
-          execute("UPDATE media_files SET available=0 WHERE path=?", [candidate]);
-        }
+    // Reconcile records inside the scanned roots with the filesystem. The old
+    // implementation only walked files that still existed, so deleted videos
+    // could remain permanently marked as available.
+    const storedMedia = queryAll("SELECT id,path,available FROM media_files");
+    for (const media of storedMedia) {
+      if (!roots.some((root) => isInside(root, media.path))) continue;
+      if (scannedPaths.has(media.path)) continue;
+
+      if (media.available) {
+        execute(
+          "UPDATE media_files SET available=0, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+          [media.id],
+        );
+        missing++;
       }
     }
+
     execute(
-      "UPDATE scan_runs SET finished_at=CURRENT_TIMESTAMP,status='completed',files_seen=?,files_added=?,files_updated=?,review_count=? WHERE id=?",
-      [seen, added, updated, review, runId],
+      "UPDATE scan_runs SET finished_at=CURRENT_TIMESTAMP,status='completed',files_seen=?,files_added=?,files_updated=?,files_missing=?,review_count=? WHERE id=?",
+      [seen, added, updated, missing, review, runId],
     );
-    return { runId, seen, added, updated, review };
+    return { runId, seen, added, updated, missing, review };
   } catch (error) {
-    execute("UPDATE scan_runs SET finished_at=CURRENT_TIMESTAMP,status='failed',error=? WHERE id=?",
-      [String(error), runId]);
+    execute(
+      "UPDATE scan_runs SET finished_at=CURRENT_TIMESTAMP,status='failed',error=? WHERE id=?",
+      [String(error), runId],
+    );
     throw error;
   }
 }
 
 function mimeFor(ext) {
-  return ({ ".mp4": "video/mp4", ".m4v": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime", ".mkv": "video/x-matroska", ".avi": "video/x-msvideo", ".ts": "video/mp2t" })[ext] || "application/octet-stream";
+  return ({
+    ".mp4": "video/mp4",
+    ".m4v": "video/mp4",
+    ".webm": "video/webm",
+    ".mov": "video/quicktime",
+    ".mkv": "video/x-matroska",
+    ".avi": "video/x-msvideo",
+    ".ts": "video/mp2t",
+  })[ext] || "application/octet-stream";
 }
