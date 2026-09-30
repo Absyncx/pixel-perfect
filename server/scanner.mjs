@@ -44,10 +44,24 @@ async function walk(dir, out = []) {
   return out;
 }
 
+export function getMediaRoots() {
+  return (process.env.CINECASA_MEDIA_ROOTS || process.env.CINECASA_MEDIA_ROOT || process.cwd())
+    .split(";")
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .map((value) => path.resolve(value));
+}
+
 function isInside(root, candidate) {
   const resolvedRoot = path.resolve(root);
   const resolvedCandidate = path.resolve(candidate);
-  return resolvedCandidate === resolvedRoot || resolvedCandidate.startsWith(resolvedRoot + path.sep);
+  const relative = path.relative(resolvedRoot, resolvedCandidate);
+  return relative === "" || (relative !== ".." && !relative.startsWith(".." + path.sep) && !path.isAbsolute(relative));
+}
+
+export function isAuthorizedScanFolder(folder, roots = getMediaRoots()) {
+  const resolved = path.resolve(folder);
+  return roots.some((root) => isInside(root, resolved));
 }
 
 export async function scanLibrary(folders) {
