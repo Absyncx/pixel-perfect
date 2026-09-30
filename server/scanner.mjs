@@ -49,6 +49,7 @@ export async function scanLibrary(folders) {
   const run = execute("INSERT INTO scan_runs (status) VALUES (?)", ["running"]);
   const runId = Number(run.lastInsertRowid);
   let seen = 0, added = 0, updated = 0, review = 0;
+  const scannedPaths = new Set();
 
   try {
     for (const folder of folders) {
@@ -60,6 +61,7 @@ export async function scanLibrary(folders) {
         const parsed = parseFile(filePath);
         if (!parsed) continue;
         seen++;
+        scannedPaths.add(filePath);
         const stat = await fs.stat(filePath);
         const existing = queryOne("SELECT id, size, mtime_ms FROM media_files WHERE path = ?", [filePath]);
 
@@ -83,11 +85,19 @@ export async function scanLibrary(folders) {
 
         let titleId;
         if (parsed.type === "movie") {
-          const result = execute(
-            "INSERT INTO titles (type,title,year) VALUES ('movie',?,?)",
-            [parsed.title, parsed.year],
+          let title = queryOne(
+            "SELECT id FROM titles WHERE type='movie' AND lower(title)=lower(?) AND (year=? OR (year IS NULL AND ? IS NULL))",
+            [parsed.title, parsed.year, parsed.year],
           );
-          titleId = Number(result.lastInsertRowid);
+          if (!title) {
+            const result = execute(
+              "INSERT INTO titles (type,title,year) VALUES ('movie',?,?)",
+              [parsed.title, parsed.year],
+            );
+            titleId = Number(result.lastInsertRowid);
+          } else {
+            titleId = title.id;
+          }
         } else {
           let title = queryOne("SELECT id FROM titles WHERE type='series' AND lower(title)=lower(?)", [parsed.title]);
           if (!title) {
@@ -117,7 +127,15 @@ export async function scanLibrary(folders) {
       }
     }
 
-    execute("UPDATE media_files SET available=0 WHERE path NOT IN (SELECT path FROM scan_review) AND available=1");
+    for (const folder of folders) {
+      const root = path.resolve(folder);
+      const existing = await walk(root).catch(() => []);
+      for (const candidate of existing) {
+        if (!scannedPaths.has(candidate)) {
+          execute("UPDATE media_files SET available=0 WHERE path=?", [candidate]);
+        }
+      }
+    }
     execute(
       "UPDATE scan_runs SET finished_at=CURRENT_TIMESTAMP,status='completed',files_seen=?,files_added=?,files_updated=?,review_count=? WHERE id=?",
       [seen, added, updated, review, runId],
