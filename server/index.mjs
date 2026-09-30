@@ -85,7 +85,7 @@ const server = http.createServer(async (request, response) => {
     }
 
     const mediaMatch = pathname.match(/^\/api\/media\/(\d+)$/);
-    if (mediaMatch && request.method === "GET") {
+    if (mediaMatch && (request.method === "GET" || request.method === "HEAD")) {
       return streamMedia(request, response, Number(mediaMatch[1]));
     }
 
