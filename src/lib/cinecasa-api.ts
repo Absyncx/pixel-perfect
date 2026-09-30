@@ -14,6 +14,7 @@ export type CatalogTitle = {
   poster_path: string | null;
   backdrop_path: string | null;
   file_count: number;
+  media_file_id: number | null;
 };
 
 const DEFAULT_BASE_URL = "";
@@ -38,4 +39,30 @@ export async function checkCineCasaServer() {
 
 export async function getCatalog() {
   return cineCasaFetch<CatalogTitle[]>("/api/catalog");
+}
+
+export type CineCasaProgress = {
+  position_seconds: number;
+  duration_seconds: number | null;
+  completed: number;
+  updated_at: string | null;
+};
+
+export function getMediaUrl(mediaFileId: number) {
+  const base = getCineCasaBaseUrl().replace(/\/$/, "");
+  return `${base}/api/media/${mediaFileId}`;
+}
+
+export async function getProgress(profileId: number, mediaFileId: number) {
+  return cineCasaFetch<CineCasaProgress>(`/api/progress?profileId=${profileId}&mediaFileId=${mediaFileId}`);
+}
+
+export async function saveProgress(profileId: number, mediaFileId: number, positionSeconds: number, durationSeconds: number | null, completed = false) {
+  const base = getCineCasaBaseUrl().replace(/\/$/, "");
+  const response = await fetch(`${base}/api/progress`, {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify({ profileId, mediaFileId, positionSeconds, durationSeconds, completed }),
+  });
+  if (!response.ok && response.status !== 204) throw new Error(`CineCasa Server: HTTP ${response.status}`);
 }
