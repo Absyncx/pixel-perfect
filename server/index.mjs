@@ -1,7 +1,7 @@
 import http from "node:http";
 import path from "node:path";
 import { execute, queryAll, queryOne } from "./db.mjs";
-import { scanLibrary } from "./scanner.mjs";
+import { getMediaRoots, isAuthorizedScanFolder, scanLibrary } from "./scanner.mjs";
 import { streamMedia } from "./media.mjs";
 
 const PORT = Number(process.env.CINECASA_PORT || 8420);
@@ -121,6 +121,16 @@ const server = http.createServer(async (request, response) => {
         : [];
       if (!folders.length) return json(response, 400, { error: "Informe ao menos uma pasta" });
 
+      const roots = getMediaRoots();
+      for (const folder of folders) {
+        if (!isAuthorizedScanFolder(folder, roots)) {
+          return json(response, 403, {
+            error: "A pasta de varredura precisa estar dentro de uma raiz de mídia autorizada",
+            authorizedRoots: roots,
+          });
+        }
+      }
+
       const adminToken = process.env.CINECASA_ADMIN_TOKEN;
       if (adminToken && request.headers.authorization !== `Bearer ${adminToken}`) {
         return json(response, 401, { error: "Autorização de administrador necessária" });
@@ -138,7 +148,12 @@ const server = http.createServer(async (request, response) => {
     if (pathname === "/api/progress" && request.method === "GET") {
       const profileId = Number(url.searchParams.get("profileId") || 1);
       const mediaFileId = Number(url.searchParams.get("mediaFileId") || 0);
-      if (!mediaFileId) return json(response, 400, { error: "mediaFileId é obrigatório" });
+      if (!Number.isInteger(profileId) || profileId <= 0) {
+        return json(response, 400, { error: "profileId deve ser um inteiro positivo" });
+      }
+      if (!Number.isInteger(mediaFileId) || mediaFileId <= 0) {
+        return json(response, 400, { error: "mediaFileId deve ser um inteiro positivo" });
+      }
       return json(response, 200, queryOne(
         "SELECT position_seconds,duration_seconds,completed,updated_at FROM progress WHERE profile_id=? AND media_file_id=?",
         [profileId, mediaFileId],
@@ -154,6 +169,12 @@ const server = http.createServer(async (request, response) => {
 
       if (!Number.isInteger(profileId) || profileId <= 0 || !Number.isInteger(mediaFileId) || mediaFileId <= 0) {
         return json(response, 400, { error: "profileId e mediaFileId devem ser inteiros positivos" });
+      }
+      if (!queryOne("SELECT id FROM profiles WHERE id=?", [profileId])) {
+        return json(response, 404, { error: "Perfil não encontrado" });
+      }
+      if (!queryOne("SELECT id FROM media_files WHERE id=?", [mediaFileId])) {
+        return json(response, 404, { error: "Arquivo de mídia não encontrado" });
       }
       if (!Number.isFinite(positionSeconds) || positionSeconds < 0 || (durationSeconds !== null && (!Number.isFinite(durationSeconds) || durationSeconds < 0))) {
         return json(response, 400, { error: "Valores de progresso inválidos" });
@@ -176,6 +197,6 @@ const server = http.createServer(async (request, response) => {
 });
 
 server.listen(PORT, HOST, () => {
-  console.log(`CineCasa Server ouvindo em http://localhost:${PORT}`);
-  console.log(`Biblioteca autorizada: ${path.resolve(process.env.CINECASA_MEDIA_ROOT || process.cwd())}`);
+  console.log(`CineCasa Server ouvindo em http://${HOST}:${PORT}`);
+  console.log(`Bibliotecas autorizadas: ${getMediaRoots().join("; ")}`);
 });
