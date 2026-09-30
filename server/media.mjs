@@ -6,9 +6,11 @@ export function streamMedia(request, response, mediaId) {
   const media = queryOne("SELECT path,size,mime_type,available FROM media_files WHERE id=?", [mediaId]);
   if (!media || !media.available) return send(response, 404, { error: "Arquivo indisponível" });
 
-  const root = path.resolve(process.env.CINECASA_MEDIA_ROOT || process.cwd());
+  const roots = (process.env.CINECASA_MEDIA_ROOTS || process.env.CINECASA_MEDIA_ROOT || process.cwd())
+    .split(";").map((value) => path.resolve(value.trim())).filter(Boolean);
   const target = path.resolve(media.path);
-  if (!target.startsWith(root + path.sep) && target !== root) {
+  const allowed = roots.some((root) => target === root || target.startsWith(root + path.sep));
+  if (!allowed) {
     return send(response, 403, { error: "Arquivo fora das pastas autorizadas" });
   }
   if (!fs.existsSync(target)) return send(response, 404, { error: "Arquivo não encontrado" });
