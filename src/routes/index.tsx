@@ -1,10 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {
-  CircleUserRound, Info, ListPlus, Play, Search, Settings,
-  ServerOff, RefreshCw, Film, Tv
+  CircleUserRound, Play, Search, Settings, ServerOff, RefreshCw, Film, Tv, X,
+  Pause, Volume2, Maximize, RotateCcw
 } from "lucide-react";
-import { checkCineCasaServer, getCatalog, type CatalogTitle } from "../lib/cinecasa-api";
+import {
+  checkCineCasaServer, getCatalog, getMediaUrl, getProgress, saveProgress,
+  type CatalogTitle
+} from "../lib/cinecasa-api";
 
 export const Route = createFileRoute("/")({ component: CineCasaHome });
 
@@ -12,13 +15,13 @@ function CineCasaHome() {
   const [connected, setConnected] = useState(false);
   const [loading, setLoading] = useState(true);
   const [titles, setTitles] = useState<CatalogTitle[]>([]);
+  const [playing, setPlaying] = useState<CatalogTitle | null>(null);
 
   async function loadCatalog() {
     setLoading(true);
     try {
       await checkCineCasaServer();
-      const catalog = await getCatalog();
-      setTitles(catalog);
+      setTitles(await getCatalog());
       setConnected(true);
     } catch {
       setConnected(false);
@@ -55,17 +58,11 @@ function CineCasaHome() {
       {!connected ? (
         <section className="flex min-h-[calc(100vh-5rem)] items-center justify-center px-6 py-16">
           <div className="w-full max-w-xl rounded-2xl border border-white/10 bg-white/[0.035] p-8 text-center shadow-2xl md:p-12">
-            <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-white/5 text-white/50">
-              <ServerOff className="h-8 w-8" />
-            </div>
+            <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-white/5 text-white/50"><ServerOff className="h-8 w-8" /></div>
             <p className="mt-6 text-xs font-semibold uppercase tracking-[0.25em] text-[#e50914]">CineCasa local</p>
             <h1 className="mt-3 text-3xl font-black tracking-tight md:text-4xl">Servidor não conectado</h1>
-            <p className="mx-auto mt-4 max-w-lg text-sm leading-6 text-white/50">
-              O CineCasa não inventa filmes para preencher a tela. Inicie o CineCasa Server no computador que guarda sua biblioteca e abra esta interface pelo endereço dele.
-            </p>
-            <button onClick={() => void loadCatalog()} disabled={loading} className="mt-7 inline-flex h-11 items-center gap-2 rounded-md bg-white px-5 text-sm font-bold text-black disabled:opacity-50">
-              <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} /> Tentar novamente
-            </button>
+            <p className="mx-auto mt-4 max-w-lg text-sm leading-6 text-white/50">Inicie o CineCasa Server no computador que guarda sua biblioteca e abra esta interface pelo endereço dele.</p>
+            <button onClick={() => void loadCatalog()} disabled={loading} className="mt-7 inline-flex h-11 items-center gap-2 rounded-md bg-white px-5 text-sm font-bold text-black disabled:opacity-50"><RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} /> Tentar novamente</button>
             <p className="mt-6 text-xs text-white/25">Servidor padrão: http://localhost:8420</p>
           </div>
         </section>
@@ -79,15 +76,15 @@ function CineCasaHome() {
             <div className="relative flex min-h-[570px] max-w-2xl flex-col justify-end px-6 pb-20 md:px-10 lg:px-14">
               <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[#e50914]">Sua biblioteca</p>
               <h1 className="mt-3 text-5xl font-black tracking-[-0.055em] md:text-7xl">CineCasa</h1>
-              <p className="mt-5 max-w-xl text-sm leading-6 text-white/60 md:text-base">
-                {titles.length} título{titles.length === 1 ? "" : "s"} encontrado{titles.length === 1 ? "" : "s"} no seu servidor local.
-              </p>
+              <p className="mt-5 max-w-xl text-sm leading-6 text-white/60 md:text-base">{titles.length} título{titles.length === 1 ? "" : "s"} encontrado{titles.length === 1 ? "" : "s"} no seu servidor local.</p>
             </div>
           </section>
-          <CatalogRow id="filmes" title="Filmes" items={movies} icon={<Film className="h-5 w-5" />} />
-          <CatalogRow id="series" title="Séries" items={series} icon={<Tv className="h-5 w-5" />} />
+          <CatalogRow id="filmes" title="Filmes" items={movies} icon={<Film className="h-5 w-5" />} onPlay={setPlaying} />
+          <CatalogRow id="series" title="Séries" items={series} icon={<Tv className="h-5 w-5" />} onPlay={setPlaying} />
         </>
       )}
+
+      {playing && <Player title={playing} onClose={() => setPlaying(null)} />}
     </main>
   );
 }
@@ -105,7 +102,7 @@ function EmptyLibrary({ onRefresh, loading }: { onRefresh: () => void; loading: 
   );
 }
 
-function CatalogRow({ id, title, items, icon }: { id: string; title: string; items: CatalogTitle[]; icon: React.ReactNode }) {
+function CatalogRow({ id, title, items, icon, onPlay }: { id: string; title: string; items: CatalogTitle[]; icon: React.ReactNode; onPlay: (item: CatalogTitle) => void }) {
   if (!items.length) return null;
   return (
     <section id={id} className="px-6 pb-12 md:px-10 lg:px-14">
@@ -116,7 +113,7 @@ function CatalogRow({ id, title, items, icon }: { id: string; title: string; ite
             <div className="relative aspect-[2/3] overflow-hidden rounded-lg bg-[#151515]">
               {item.poster_path ? <img src={item.poster_path} alt="" className="h-full w-full object-cover transition duration-500 group-hover/card:scale-[1.04]" /> : <div className="grid h-full place-items-center text-white/20"><Film className="h-10 w-10" /></div>}
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 transition group-hover/card:opacity-100" />
-              <button aria-label={`Reproduzir ${item.title}`} className="absolute bottom-3 left-3 grid h-9 w-9 scale-90 place-items-center rounded-full bg-white text-black opacity-0 transition group-hover/card:scale-100 group-hover/card:opacity-100"><Play className="h-4 w-4 fill-current" /></button>
+              <button onClick={() => item.media_file_id && onPlay(item)} disabled={!item.media_file_id} aria-label={item.media_file_id ? `Reproduzir ${item.title}` : `Sem arquivo para ${item.title}`} className="absolute bottom-3 left-3 grid h-9 w-9 scale-90 place-items-center rounded-full bg-white text-black opacity-0 transition group-hover/card:scale-100 group-hover/card:opacity-100 disabled:cursor-not-allowed disabled:opacity-40"><Play className="h-4 w-4 fill-current" /></button>
             </div>
             <h3 className="mt-2 truncate text-sm font-semibold text-white/90">{item.title}</h3>
             <p className="mt-0.5 truncate text-xs text-white/40">{[item.year, item.type === "series" ? "Série" : "Filme"].filter(Boolean).join(" • ")}</p>
@@ -124,5 +121,65 @@ function CatalogRow({ id, title, items, icon }: { id: string; title: string; ite
         ))}
       </div>
     </section>
+  );
+}
+
+function Player({ title, onClose }: { title: CatalogTitle; onClose: () => void }) {
+  const [position, setPosition] = useState(0);
+  const [duration, setDuration] = useState<number | null>(null);
+  const [resume, setResume] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    if (!title.media_file_id) return;
+    void getProgress(1, title.media_file_id).then((progress) => {
+      if (active) {
+        setResume(progress.completed ? 0 : Math.max(0, progress.position_seconds || 0));
+      }
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, [title.media_file_id]);
+
+  if (!title.media_file_id) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/95">
+      <div className="flex h-full flex-col">
+        <div className="flex h-16 shrink-0 items-center justify-between px-4 md:px-8">
+          <div className="min-w-0"><p className="truncate text-sm font-semibold">{title.title}</p><p className="text-xs text-white/40">CineCasa</p></div>
+          <button onClick={onClose} aria-label="Fechar player" className="rounded-full p-2 text-white/70 hover:bg-white/10 hover:text-white"><X className="h-6 w-6" /></button>
+        </div>
+        <div className="relative flex min-h-0 flex-1 items-center justify-center bg-black">
+          <video
+            className="max-h-full max-w-full w-full object-contain"
+            src={getMediaUrl(title.media_file_id)}
+            controls
+            playsInline
+            autoPlay
+            onLoadedMetadata={(event) => {
+              const video = event.currentTarget;
+              setDuration(Number.isFinite(video.duration) ? video.duration : null);
+              if (resume > 0 && Math.abs(video.currentTime - resume) > 2) video.currentTime = resume;
+            }}
+            onTimeUpdate={(event) => setPosition(event.currentTarget.currentTime)}
+            onPause={(event) => {
+              const video = event.currentTarget;
+              void saveProgress(1, title.media_file_id!, video.currentTime, Number.isFinite(video.duration) ? video.duration : null, false).catch(() => undefined);
+            }}
+            onEnded={(event) => {
+              const video = event.currentTarget;
+              void saveProgress(1, title.media_file_id!, video.duration, Number.isFinite(video.duration) ? video.duration : null, true).catch(() => undefined);
+            }}
+          />
+          {resume > 5 && position < 1 && (
+            <div className="pointer-events-none absolute bottom-8 left-1/2 -translate-x-1/2 rounded-full bg-black/75 px-4 py-2 text-xs text-white/80 backdrop-blur">Retomando em {Math.floor(resume / 60)}:{String(Math.floor(resume % 60)).padStart(2, "0")}</div>
+          )}
+        </div>
+        <div className="flex h-10 shrink-0 items-center justify-between px-4 text-xs text-white/35 md:px-8">
+          <span>{duration ? `${Math.floor(position / 60)}:${String(Math.floor(position % 60)).padStart(2, "0")}` : ""}</span>
+          <span>Reprodução local • HTTP Range</span>
+        </div>
+      </div>
+    </div>
   );
 }
