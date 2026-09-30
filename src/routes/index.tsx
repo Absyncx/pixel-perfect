@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   CircleUserRound, Play, Search, Settings, ServerOff, RefreshCw, Film, Tv, X
 } from "lucide-react";
@@ -168,19 +168,46 @@ function Player({ profileId, title, onClose }: { profileId: number; title: Catal
   const [position, setPosition] = useState(0);
   const [duration, setDuration] = useState<number | null>(null);
   const [resume, setResume] = useState(0);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const lastSavedAt = useRef(0);
+  const resumeApplied = useRef(false);
 
   useEffect(() => {
     let active = true;
-    if (!title.media_file_id) return;
-    void getProgress(profileId, title.media_file_id).then((progress) => {
+    const mediaFileId = title.media_file_id;
+    if (!mediaFileId) return;
+
+    setResume(0);
+    setPosition(0);
+    setDuration(null);
+    resumeApplied.current = false;
+    lastSavedAt.current = 0;
+
+    void getProgress(profileId, mediaFileId).then((progress) => {
       if (active) {
         setResume(progress.completed ? 0 : Math.max(0, progress.position_seconds || 0));
       }
     }).catch(() => undefined);
+
     return () => { active = false; };
-  }, [title.media_file_id]);
+  }, [profileId, title.media_file_id]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || resumeApplied.current || resume <= 5 || !duration) return;
+    if (resume >= duration - 3) return;
+    video.currentTime = resume;
+    resumeApplied.current = true;
+  }, [resume, duration]);
 
   if (!title.media_file_id) return null;
+
+  const persistProgress = (video: HTMLVideoElement, completed = false) => {
+    const currentTime = Number.isFinite(video.currentTime) ? video.currentTime : 0;
+    const videoDuration = Number.isFinite(video.duration) ? video.duration : null;
+    void saveProgress(profileId, title.media_file_id!, currentTime, videoDuration, completed).catch(() => undefined);
+    lastSavedAt.current = Date.now();
+  };
 
   return (
     <div className="fixed inset-0 z-50 bg-black/95">
@@ -191,6 +218,7 @@ function Player({ profileId, title, onClose }: { profileId: number; title: Catal
         </div>
         <div className="relative flex min-h-0 flex-1 items-center justify-center bg-black">
           <video
+            ref={videoRef}
             className="max-h-full max-w-full w-full object-contain"
             src={getMediaUrl(title.media_file_id)}
             controls
@@ -199,19 +227,18 @@ function Player({ profileId, title, onClose }: { profileId: number; title: Catal
             onLoadedMetadata={(event) => {
               const video = event.currentTarget;
               setDuration(Number.isFinite(video.duration) ? video.duration : null);
-              if (resume > 0 && Math.abs(video.currentTime - resume) > 2) video.currentTime = resume;
             }}
-            onTimeUpdate={(event) => setPosition(event.currentTarget.currentTime)}
-            onPause={(event) => {
+            onTimeUpdate={(event) => {
               const video = event.currentTarget;
-              void saveProgress(profileId, title.media_file_id!, video.currentTime, Number.isFinite(video.duration) ? video.duration : null, false).catch(() => undefined);
+              setPosition(video.currentTime);
+              if (video.currentTime > 0 && Date.now() - lastSavedAt.current >= 10000) {
+                persistProgress(video);
+              }
             }}
-            onEnded={(event) => {
-              const video = event.currentTarget;
-              void saveProgress(profileId, title.media_file_id!, video.duration, Number.isFinite(video.duration) ? video.duration : null, true).catch(() => undefined);
-            }}
+            onPause={(event) => persistProgress(event.currentTarget)}
+            onEnded={(event) => persistProgress(event.currentTarget, true)}
           />
-          {resume > 5 && position < 1 && (
+          {resume > 5 && position < 1 && !resumeApplied.current && (
             <div className="pointer-events-none absolute bottom-8 left-1/2 -translate-x-1/2 rounded-full bg-black/75 px-4 py-2 text-xs text-white/80 backdrop-blur">Retomando em {Math.floor(resume / 60)}:{String(Math.floor(resume % 60)).padStart(2, "0")}</div>
           )}
         </div>
