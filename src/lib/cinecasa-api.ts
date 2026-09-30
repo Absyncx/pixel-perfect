@@ -76,3 +76,22 @@ export async function saveProgress(profileId: number, mediaFileId: number, posit
   });
   if (!response.ok && response.status !== 204) throw new Error(`CineCasa Server: HTTP ${response.status}`);
 }
+
+
+export async function getMyList(profileId: number) {
+  return cineCasaFetch<CatalogTitle[]>(`/api/my-list?profileId=${profileId}`);
+}
+
+export async function addToMyList(profileId: number, titleId: number) {
+  return cineCasaFetch<{ ok: boolean }>("/api/my-list", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ profileId, titleId }),
+  });
+}
+
+export async function removeFromMyList(profileId: number, titleId: number) {
+  return cineCasaFetch<{ ok: boolean }>(`/api/my-list?profileId=${profileId}&titleId=${titleId}`, {
+    method: "DELETE",
+  });
+}
