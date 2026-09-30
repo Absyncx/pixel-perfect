@@ -53,6 +53,16 @@ export async function getProfiles() {
   return cineCasaFetch<CineCasaProfile[]>("/api/profiles");
 }
 
+export type SeriesEpisode = {
+  season_number: number;
+  episode_number: number;
+  media_file_id: number;
+};
+
+export async function getSeriesEpisodes(titleId: number) {
+  return cineCasaFetch<SeriesEpisode[]>(`/api/series/${titleId}/episodes`);
+}
+
 export type CineCasaProgress = {
   position_seconds: number;
   duration_seconds: number | null;
