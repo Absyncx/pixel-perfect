@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "server": "node server/index.mjs"
+    "server": "node server/index.mjs",
+    "test:server": "node server/smoke-test.mjs"
   },
   "overrides": {
     "rolldown": "1.2.1"
